@@ -6,16 +6,21 @@ from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.decomposition._pca import PCA
 from scipy.stats import gaussian_kde
 # Путь к файлу Excel
-file_path = 'C:/Users/infor/OneDrive/Рабочий стол/Универ/11 сем/ТиСПР/Практика/Варианты_9503/Вар_1/10 Гц, шаг 0.7, 1 выборка.xlsx'
+file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
 
 # Чтение данных из файла Excel
 # словарь датафреймов
 data = pd.read_excel(file_path, None)
 data_norm = copy.deepcopy(data)
+keys = list(data_norm.keys())
 
-array = np.zeros([30, 12, 3])
+data_size1 = data_norm[keys[0]].shape[0]
+data_size2 = data_norm[keys[0]].shape[1]
+
+array = np.zeros([data_size1, data_size2, 3])
 i = 0
 
 # Деление каждой строки на ее нулевой элемент
@@ -29,8 +34,8 @@ array[:, 0, 1] = 2.0
 array[:, 0, 2] = 3.0
 #print(array[:, 0, 2])
 
-X_train = np.empty((0, 12))
-X_test = np.empty((0, 12))
+X_train = np.empty((0, data_size2))
+X_test = np.empty((0, data_size2))
 Y_train = np.empty((0, 1))
 Y_test = np.empty((0, 1))
 
@@ -43,6 +48,8 @@ Y_test = X_test[:, 0]
 
 X_train = np.delete(X_train, 0, axis=1)
 X_test = np.delete(X_test, 0, axis=1)
+
+all_data = np.vstack((data_norm['НР'], data_norm['ЖТ'], data_norm['ФЖ']))
 
 #к ближайших соседей
 model = KNeighborsClassifier(n_neighbors=15, metric='euclidean')
@@ -62,6 +69,36 @@ print(confusion_matrix(Y_test, predictions2))
 
 #ЛДФ
 
+#МГК чтобы посмотреть на разделяемость классов
+PCA_obj = PCA(n_components=2)
+
+data12a3 = np.concatenate((all_data[:59, :], all_data[59:, :]), axis=0) #1+2 и 3 
+reduced_data12a3 = PCA_obj.fit_transform(data12a3)
+
+data1_3 = np.vstack((all_data[:30, :], all_data[60:, :]))
+
+data13a2 = np.concatenate((data1_3, all_data[30:60, :]), axis=0)  #1+3 и 2
+reduced_data13a2 = PCA_obj.fit_transform(data13a2)
+
+data23a1 = np.concatenate((all_data[30:, :], all_data[:30, :]), axis=0)  #2+3 и 1
+reduced_data23a1 = PCA_obj.fit_transform(data23a1)
+
+fig, axs = plt.subplots(3, 1)
+
+axs[0].scatter(reduced_data12a3[:60, 0], reduced_data12a3[:60, 1], label='1+2')
+axs[0].scatter(reduced_data12a3[60:, 0], reduced_data12a3[60:, 1], label='3')
+axs[0].legend(loc='best')
+
+axs[1].scatter(reduced_data13a2[:60, 0], reduced_data13a2[:60, 1], label='1+3')
+axs[1].scatter(reduced_data13a2[60:, 0], reduced_data13a2[60:, 1], label='2')
+axs[1].legend(loc='best')
+
+axs[2].scatter(reduced_data23a1[:60, 0], reduced_data23a1[:60, 1], label='2+3')
+axs[2].scatter(reduced_data23a1[60:, 0], reduced_data23a1[60:, 1], label='1')
+axs[2].legend(loc='best')
+plt.show()
+
+'''
 fig, axs = plt.subplots(3, 1)
 
 diff_mean = np.mean(X_train[:15, :], axis=0) - np.mean(X_train[15:45, :], axis=0)
@@ -152,3 +189,4 @@ plt.show()
 covNR = np.cov(X_train[:15, :], rowvar=0)
 covJT = np.cov(X_train[15:30, :], rowvar=0)
 covFJ = np.cov(X_train[30:45, :], rowvar=0)
+'''
