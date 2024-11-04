@@ -2,12 +2,14 @@ import pandas as pd
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.decomposition._pca import PCA
 from scipy.stats import gaussian_kde
+from mpl_toolkits.mplot3d import Axes3D
 # Путь к файлу Excel
 file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
 
@@ -32,8 +34,8 @@ for x in ["НР", "ЖТ", "ФЖ"]:
 # сделали столбец меток для каждого ритма (1 - НР, 2 - ЖТ, 3 - ФЖ)
 array[:, 0, 1] = 2.0
 array[:, 0, 2] = 3.0
-#print(array[:, 0, 2])
 
+# делим на тест и тейн только для К-БС
 X_train = np.empty((0, data_size2))
 X_test = np.empty((0, data_size2))
 Y_train = np.empty((0, 1))
@@ -61,43 +63,152 @@ model2 = KNeighborsClassifier(n_neighbors=15, weights='distance', metric='euclid
 model2.fit(X_train, Y_train)
 predictions2 = model2.predict(X_test)
 
-print(classification_report(Y_test, predictions))
-print(confusion_matrix(Y_test, predictions))
+#print(classification_report(Y_test, predictions))
+#print(confusion_matrix(Y_test, predictions))
 
-print(classification_report(Y_test, predictions2))
-print(confusion_matrix(Y_test, predictions2))
+#print(classification_report(Y_test, predictions2))
+#print(confusion_matrix(Y_test, predictions2))
 
-#ЛДФ
 
-#МГК чтобы посмотреть на разделяемость классов
-PCA_obj = PCA(n_components=2)
+#МГК чтобы посмотреть на разделяемость классов 
+# Валера прости я все удалила, потому что начала путаться =(
+# скаты нарисовала после оценки % дисп, да и вроде получилось поменьше кода
 
-data12a3 = np.concatenate((all_data[:59, :], all_data[59:, :]), axis=0) #1+2 и 3 
-reduced_data12a3 = PCA_obj.fit_transform(data12a3)
+# САМОДЕЯТЕЛЬНОСТЬ МАШИ СТАРТ
+# PCA для % объяснённой дисп
+PCA_var = PCA(n_components=data_size2)  # число компонент = число признаков
+PCA_var.fit(all_data)  # применение PCA к данным
 
-data1_3 = np.vstack((all_data[:30, :], all_data[60:, :]))
+# считаем процент объясненной дисперсии
+explained_variance_ratio = PCA_var.explained_variance_ratio_
+cumulative_variance_ratio = np.cumsum(explained_variance_ratio)
 
-data13a2 = np.concatenate((data1_3, all_data[30:60, :]), axis=0)  #1+3 и 2
-reduced_data13a2 = PCA_obj.fit_transform(data13a2)
-
-data23a1 = np.concatenate((all_data[30:, :], all_data[:30, :]), axis=0)  #2+3 и 1
-reduced_data23a1 = PCA_obj.fit_transform(data23a1)
-
-fig, axs = plt.subplots(3, 1)
-
-axs[0].scatter(reduced_data12a3[:60, 0], reduced_data12a3[:60, 1], label='1+2')
-axs[0].scatter(reduced_data12a3[60:, 0], reduced_data12a3[60:, 1], label='3')
-axs[0].legend(loc='best')
-
-axs[1].scatter(reduced_data13a2[:60, 0], reduced_data13a2[:60, 1], label='1+3')
-axs[1].scatter(reduced_data13a2[60:, 0], reduced_data13a2[60:, 1], label='2')
-axs[1].legend(loc='best')
-
-axs[2].scatter(reduced_data23a1[:60, 0], reduced_data23a1[:60, 1], label='2+3')
-axs[2].scatter(reduced_data23a1[60:, 0], reduced_data23a1[60:, 1], label='1')
-axs[2].legend(loc='best')
+plt.figure()
+plt.plot(range(1, len(cumulative_variance_ratio) + 1), cumulative_variance_ratio * 100, marker='o', linestyle='-', color='orange')
+plt.xlabel('Количество главных компонент')
+plt.ylabel('Процент объясненной дисперсии')
+plt.title('Процент объясненной дисперсии от числа главных компонент')
+#plt.ylim(0, 110) #если очень хочется по красоте с нуля график
+plt.grid()
 plt.show()
 
+# переделываю скат
+PCA_scatter = PCA(n_components=2)
+proj_data = PCA_scatter.fit_transform(all_data)
+
+# строю скаты для первых 2х ГК
+plt.figure(figsize=(8, 6))
+plt.scatter(proj_data[:30, 0], proj_data[:30, 1], label='НР', alpha=0.7) # альфа тут типа ~прозрачность~ вау +вайб
+plt.scatter(proj_data[30:60, 0], proj_data[30:60, 1], label='ЖТ', alpha=0.7)
+plt.scatter(proj_data[60:, 0], proj_data[60:, 1], label='ФЖ', alpha=0.7)
+
+plt.xlabel('I ГК')
+plt.ylabel('II ГК')
+plt.title('Объекты в пространстве первых двух главных компонент')
+plt.legend()
+plt.grid()
+plt.show()
+
+# Применение PCA к данным для получения первых трёх главных компонент
+PCA_scatter_3d = PCA(n_components=3)
+proj_data_3d = PCA_scatter_3d.fit_transform(all_data)
+
+# Создание 3D-фигуры
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+
+# Построение трёхмерной скаттерограммы
+ax.scatter(proj_data_3d[:30, 0], proj_data_3d[:30, 1], proj_data_3d[:30, 2], label='НР', alpha=0.7)
+ax.scatter(proj_data_3d[30:60, 0], proj_data_3d[30:60, 1], proj_data_3d[30:60, 2], label='ЖТ', alpha=0.7)
+ax.scatter(proj_data_3d[60:, 0], proj_data_3d[60:, 1], proj_data_3d[60:, 2], label='ФЖ', alpha=0.7)
+
+# Настройки графика
+ax.set_xlabel('1 ГК')
+ax.set_ylabel('2 ГК')
+ax.set_zlabel('3 ГК')
+plt.title('Объекты в пространстве первых трёх главных компонент')
+ax.legend()
+plt.show()
+
+#метод наименьших расстояний
+# функция для объединения близких классов
+def class_stack(classesData, key1:str, key2:str):
+    class1 = classesData[key1].to_numpy()
+    class2 = classesData[key2].to_numpy()
+    stackedClasses = np.vstack((class1, class2)) #class1._append(class2, ignore_index = True)
+    stackedClasses = np.delete(stackedClasses, 0, axis=1)
+    return stackedClasses
+
+stackedClasses = class_stack(data_norm, 'НР', 'ЖТ')
+stackedClasses_means = np.mean(stackedClasses, axis=0)
+shamefulClass = np.delete(data_norm['ФЖ'].to_numpy(), 0, axis=1)
+shamefulClass_mean = np.mean(shamefulClass, axis=0)
+
+w_min_dist = stackedClasses_means - shamefulClass_mean
+w_norm_min_dist = w_min_dist/np.linalg.norm(w_min_dist)
+
+projClass1 = np.matmul(stackedClasses, w_norm_min_dist)
+projClass2 = np.matmul(shamefulClass, w_norm_min_dist)
+
+#histData = np.hstack((projClass1, projClass2))
+'''
+plt.figure()
+plt.hist(projClass1, bins= 20, edgecolor = 'black', label='Stacked Classes')
+plt.hist(projClass2, bins= 20, edgecolor = 'black', label='Shameful Class')
+plt.legend()
+
+
+# Строим оценку плотности KDE
+kde = gaussian_kde(projClass1)               # Оценка плотности
+x_vals = np.linspace(min(projClass2), max(projClass1), 100)  # Создаем точки для построения графика
+plt.plot(x_vals, kde(x_vals), color='red', linewidth=1)  # Строим линию плотности
+kde2 = gaussian_kde(projClass2)               # Оценка плотности
+x_vals2 = np.linspace(min(projClass2), max(projClass1), 100)  # Создаем точки для построения графика
+plt.plot(x_vals2, kde2(x_vals2), color='blue', linewidth=1)  # Строим линию плотности
+'''
+kde1 = gaussian_kde(projClass1)
+kde2 = gaussian_kde(projClass2)
+
+# Определяем диапазон значений для оси X
+x_vals = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+
+# Вычисляем значения плотности для обоих наборов данных
+kde1_vals = kde1(x_vals)
+kde2_vals = kde2(x_vals)
+
+# Находим точки пересечения, где разница меняет знак
+difference = kde1_vals - kde2_vals
+sign_changes = np.where(np.diff(np.sign(difference)))[0]
+
+# Отображаем гистограммы, огибающие и точки пересечения
+plt.figure()
+plt.hist(projClass1, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='Stacked Classes')
+plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='Shameful Class') 
+plt.plot(x_vals, kde1_vals, color='red', linewidth=2, label="KDE 1")
+plt.plot(x_vals, kde2_vals, color='blue', linewidth=2, label="KDE 2")
+
+# Отмечаем точки пересечения
+for idx in sign_changes:
+    plt.axvline(x_vals[idx])  # красные точки для пересечения
+
+plt.xlabel('Значение')
+plt.ylabel('Плотность')
+plt.title('Гистограммы с пересечением огибающих')
+plt.legend()
+plt.show()
+
+'''
+sns.histplot(projClass1, kde=True, bins=20, color='skyblue', edgecolor='black')
+sns.histplot(projClass2, kde=True, bins=20, color='purple', edgecolor='black')
+plt.xlabel('Значение')
+plt.ylabel('Частота')
+plt.title('Гистограмма с оценкой плотности KDE')
+'''
+plt.show()
+
+#ЛДФ- Фишер, сначала посмотрели МГК, выделили "позорный класс"
+
+# САМОДЕЯТЕЛЬНОСТЬ МАШИ КОНЕЦ
 '''
 fig, axs = plt.subplots(3, 1)
 
