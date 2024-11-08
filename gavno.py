@@ -9,7 +9,9 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.decomposition._pca import PCA
 from scipy.stats import gaussian_kde
+from sklearn import metrics
 from mpl_toolkits.mplot3d import Axes3D
+from scipy.stats import norm
 # Путь к файлу Excel
 file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
 
@@ -139,6 +141,7 @@ def class_stack(classesData, key1:str, key2:str):
     stackedClasses = np.delete(stackedClasses, 0, axis=1)
     return stackedClasses
 
+# применение метода классификации по минимуму расстояния для 3 классов
 stackedClasses = class_stack(data_norm, 'НР', 'ЖТ')
 stackedClasses_means = np.mean(stackedClasses, axis=0)
 shamefulClass = np.delete(data_norm['ФЖ'].to_numpy(), 0, axis=1)
@@ -150,22 +153,6 @@ w_norm_min_dist = w_min_dist/np.linalg.norm(w_min_dist)
 projClass1 = np.matmul(stackedClasses, w_norm_min_dist)
 projClass2 = np.matmul(shamefulClass, w_norm_min_dist)
 
-#histData = np.hstack((projClass1, projClass2))
-'''
-plt.figure()
-plt.hist(projClass1, bins= 20, edgecolor = 'black', label='Stacked Classes')
-plt.hist(projClass2, bins= 20, edgecolor = 'black', label='Shameful Class')
-plt.legend()
-
-
-# Строим оценку плотности KDE
-kde = gaussian_kde(projClass1)               # Оценка плотности
-x_vals = np.linspace(min(projClass2), max(projClass1), 100)  # Создаем точки для построения графика
-plt.plot(x_vals, kde(x_vals), color='red', linewidth=1)  # Строим линию плотности
-kde2 = gaussian_kde(projClass2)               # Оценка плотности
-x_vals2 = np.linspace(min(projClass2), max(projClass1), 100)  # Создаем точки для построения графика
-plt.plot(x_vals2, kde2(x_vals2), color='blue', linewidth=1)  # Строим линию плотности
-'''
 kde1 = gaussian_kde(projClass1)
 kde2 = gaussian_kde(projClass2)
 
@@ -182,18 +169,178 @@ sign_changes = np.where(np.diff(np.sign(difference)))[0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
-plt.hist(projClass1, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='Stacked Classes')
-plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='Shameful Class') 
-plt.plot(x_vals, kde1_vals, color='red', linewidth=2, label="KDE 1")
-plt.plot(x_vals, kde2_vals, color='blue', linewidth=2, label="KDE 2")
-
-# Отмечаем точки пересечения
-for idx in sign_changes:
-    plt.axvline(x_vals[idx])  # красные точки для пересечения
-
+plt.hist(projClass1, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1+2')
+plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='3') 
+plt.plot(x_vals, kde1_vals, color='red', linewidth=2, label="Огибающая 1+2")
+plt.plot(x_vals, kde2_vals, color='blue', linewidth=2, label="Огибающая 3")
+plt.xlim(left=min(projClass1.min(), projClass2.min()), right=max(projClass1.max(), projClass2.max()))
+threshold = x_vals[sign_changes][0]
+plt.axvline(x_vals[sign_changes], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
+plt.legend()
+plt.show()
+
+# применение метода классификации по минимуму расстояния для 2 классов
+class1 = np.delete(data_norm['НР'].to_numpy(), 0, axis=1)
+class2 = np.delete(data_norm['ЖТ'].to_numpy(), 0, axis=1)
+class1_mean = np.mean(class1, axis=0)
+class2_mean = np.mean(class2, axis=0)
+w_min_dist_2 = class1_mean - class2_mean
+w_norm_min_dist_2 = w_min_dist_2/np.linalg.norm(w_min_dist_2)
+
+projClass1_2 = np.matmul(class1, w_norm_min_dist_2)
+projClass2_2 = np.matmul(class2, w_norm_min_dist_2)
+
+kde1_2 = gaussian_kde(projClass1_2)
+kde2_2 = gaussian_kde(projClass2_2)
+
+# Определяем диапазон значений для оси X
+x_vals_2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 1000)
+
+# Вычисляем значения плотности для обоих наборов данных
+kde1_vals_2 = kde1_2(x_vals_2)
+kde2_vals_2 = kde2_2(x_vals_2)
+
+# Находим точки пересечения, где разница меняет знак
+difference_2 = kde1_vals_2 - kde2_vals_2
+sign_changes_2 = np.where(np.diff(np.sign(difference_2)))[0]
+
+# Отображаем гистограммы, огибающие и точки пересечения
+plt.figure()
+plt.hist(projClass1_2, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1')
+plt.hist(projClass2_2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='2') 
+plt.plot(x_vals_2, kde1_vals_2, color='red', linewidth=2, label="Огибающая 1")
+plt.plot(x_vals_2, kde2_vals_2, color='blue', linewidth=2, label="Огибающая 2")
+plt.xlim(left=min(projClass1_2.min(), projClass2_2.min()), right=max(projClass1_2.max(), projClass2_2.max()))
+threshold_2 = x_vals_2[sign_changes_2][0]
+plt.axvline(x_vals_2[sign_changes_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
+plt.xlabel('Значение')
+plt.ylabel('Плотность')
+plt.title('Гистограммы с пересечением огибающих')
+plt.legend()
+plt.show()
+
+# средние и дисперсии проекций
+projClass1_M = np.mean(projClass1)
+projClass2_M = np.mean(projClass2)
+projClass1_M_2 = np.mean(projClass1_2)
+projClass2_M_2 = np.mean(projClass2_2)
+projClass1_D = np.var(projClass1)
+projClass2_D = np.var(projClass2)
+projClass1_D_2 = np.var(projClass1_2)
+projClass2_D_2 = np.var(projClass2_2)
+
+# построение ROC-кривой
+all_data_2 = np.delete(all_data, 0, axis=1)
+r1 = np.matmul(all_data_2, w_norm_min_dist) - threshold
+
+ones = np.ones(30) * 1    # Массив из 30 единиц
+twos = np.ones(30) * 2     # Массив из 30 двоек
+threes = np.ones(30) * 3   # Массив из 30 троек
+metki1_train = np.concatenate((ones, twos, threes))
+
+def pizdato1(data, w, threshold, metki_train):
+    r1 = np.matmul(data, w) - threshold
+
+    metki1 = []
+    for i in range(len(r1)):
+        if r1[i] > 0:
+            metki1.append(1)
+        else:
+            metki1.append(0)
+    metki1_test = np.array(metki1)
+
+    tp1 = 0
+    tn1 = 0
+    fp1 = 0
+    fn1 = 0
+    for i in range(len(metki1_test)):
+        if metki_train[i] == 1 or metki_train[i] == 2:
+            if metki1_test[i] == 1:
+                tp1 += 1
+            else:
+                fn1 += 1
+        else:
+            if metki1_test[i] == 1:
+                fp1 += 1
+            else:
+                tn1 += 1
+    se1 = tp1/(tp1+fn1)
+    sp1 = tn1/(tn1+fp1)
+    acc1 = (tn1+tp1)/(tn1+tp1+fn1+fp1)
+    return se1, sp1, acc1
+
+se1 = []
+sp1 = []
+thresholds1 = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 100)
+for i in thresholds1:
+    se, sp, _ = pizdato1(all_data_2, w_min_dist, i, metki1_train)
+    se1.append(se)
+    sp1.append(sp*(-1) + 1)
+
+plt.figure()
+plt.plot(sp1, se1)
+'''
+r2 = np.matmul(stackedClasses, w_norm_min_dist_2) - threshold_2
+
+metki2_train = np.concatenate((ones, twos))
+
+metki2 = []
+for i in range(len(r2)):
+    if r2[i] > 0:
+        metki2.append(1)
+    else:
+        metki2.append(2)
+metki2_test = np.array(metki2)
+
+tp2 = 0
+tn2 = 0
+fp2 = 0
+fn2 = 0
+for i in range(len(metki2_test)):
+    if metki2_train[i] == 2:
+        if metki2_test[i] == 2:
+            tp2 += 1
+        else:
+            fn2 += 1
+    else:
+        if metki2_test[i] == 1:
+            tn2 += 1
+        else:
+            fp2 += 1
+print(tp2, tn2, fp2, fn2)
+print(metki2_test)
+
+
+
+se2 = tp2/(tp2+fn2)
+sp2 = tn2/(tn2+fp2)
+acc2 = (tn2+tp2)/(tn2+tp2+fn2+fp2)
+'''
+# Параметры гауссовых распределений для двух классов
+mu1, sigma1 = projClass1_M, projClass1_D  # Класс 1
+mu0, sigma0 = projClass2_M, projClass2_D  # Класс 0
+
+# Пороги для классификации
+thresholds = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+tpr = []
+fpr = []
+
+for T in thresholds:
+    # Рассчитаем TPR и FPR для текущего порога
+    tpr_value = 1 - norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
+    fpr_value = 1 - norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
+    
+    tpr.append(tpr_value)
+    fpr.append(fpr_value)
+
+# Построение ROC-кривой
+plt.plot(fpr, tpr, label="ROC Curve")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC-кривая методом Гаусса")
 plt.legend()
 plt.show()
 
@@ -204,7 +351,6 @@ plt.xlabel('Значение')
 plt.ylabel('Частота')
 plt.title('Гистограмма с оценкой плотности KDE')
 '''
-plt.show()
 
 #ЛДФ- Фишер, сначала посмотрели МГК, выделили "позорный класс"
 
