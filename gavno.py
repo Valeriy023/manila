@@ -3,15 +3,13 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn import preprocessing
-from sklearn.model_selection import train_test_split
+import scipy.stats as stats
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.decomposition._pca import PCA
-from scipy.stats import gaussian_kde
 from sklearn import metrics
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.stats import norm
+
 # Путь к файлу Excel
 file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
 
@@ -153,28 +151,31 @@ w_norm_min_dist = w_min_dist/np.linalg.norm(w_min_dist)
 projClass1 = np.matmul(stackedClasses, w_norm_min_dist)
 projClass2 = np.matmul(shamefulClass, w_norm_min_dist)
 
-kde1 = gaussian_kde(projClass1)
-kde2 = gaussian_kde(projClass2)
-
 # Определяем диапазон значений для оси X
 x_vals = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
 
-# Вычисляем значения плотности для обоих наборов данных
-kde1_vals = kde1(x_vals)
-kde2_vals = kde2(x_vals)
+# средние и дисперсии проекций
+projClass1_M = np.mean(projClass1)
+projClass2_M = np.mean(projClass2)
+projClass1_D = np.sqrt(np.var(projClass1))
+projClass2_D = np.sqrt(np.var(projClass2))
 
-# Находим точки пересечения, где разница меняет знак
-difference = kde1_vals - kde2_vals
+#генерируем нормальное распределение по средним и дисперсиям
+ogib1 = stats.norm.pdf(x_vals,projClass1_M, projClass1_D)
+ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
+
+#находим точки пересечений, где разница меняет знак
+difference = ogib1 - ogib2 
 sign_changes = np.where(np.diff(np.sign(difference)))[0]
+threshold = x_vals[sign_changes][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
 plt.hist(projClass1, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1+2')
-plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='3') 
-plt.plot(x_vals, kde1_vals, color='red', linewidth=2, label="Огибающая 1+2")
-plt.plot(x_vals, kde2_vals, color='blue', linewidth=2, label="Огибающая 3")
+plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='3')
+plt.plot(x_vals, ogib1, color='red', linewidth=2, label="Огибающая 1+2")
+plt.plot(x_vals, ogib2, color='blue', linewidth=2, label="Огибающая 3")
 plt.xlim(left=min(projClass1.min(), projClass2.min()), right=max(projClass1.max(), projClass2.max()))
-threshold = x_vals[sign_changes][0]
 plt.axvline(x_vals[sign_changes], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
@@ -193,44 +194,33 @@ w_norm_min_dist_2 = w_min_dist_2/np.linalg.norm(w_min_dist_2)
 projClass1_2 = np.matmul(class1, w_norm_min_dist_2)
 projClass2_2 = np.matmul(class2, w_norm_min_dist_2)
 
-kde1_2 = gaussian_kde(projClass1_2)
-kde2_2 = gaussian_kde(projClass2_2)
-
-# Определяем диапазон значений для оси X
 x_vals_2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 1000)
 
-# Вычисляем значения плотности для обоих наборов данных
-kde1_vals_2 = kde1_2(x_vals_2)
-kde2_vals_2 = kde2_2(x_vals_2)
+projClass1_M_2 = np.mean(projClass1_2)
+projClass2_M_2 = np.mean(projClass2_2)
+projClass1_D_2 = np.sqrt(np.var(projClass1_2))
+projClass2_D_2 = np.sqrt(np.var(projClass2_2))
 
-# Находим точки пересечения, где разница меняет знак
-difference_2 = kde1_vals_2 - kde2_vals_2
+ogib1_2 = stats.norm.pdf(x_vals_2,projClass1_M_2, projClass1_D_2)
+ogib2_2 = stats.norm.pdf(x_vals_2, projClass2_M_2, projClass2_D_2)
+
+difference_2 = ogib1_2 - ogib2_2
 sign_changes_2 = np.where(np.diff(np.sign(difference_2)))[0]
+threshold_2 = x_vals_2[sign_changes_2][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
 plt.hist(projClass1_2, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1')
 plt.hist(projClass2_2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='2') 
-plt.plot(x_vals_2, kde1_vals_2, color='red', linewidth=2, label="Огибающая 1")
-plt.plot(x_vals_2, kde2_vals_2, color='blue', linewidth=2, label="Огибающая 2")
+plt.plot(x_vals_2, ogib1_2, color='red', linewidth=2, label="Огибающая 1")
+plt.plot(x_vals_2, ogib2_2, color='blue', linewidth=2, label="Огибающая 2")
 plt.xlim(left=min(projClass1_2.min(), projClass2_2.min()), right=max(projClass1_2.max(), projClass2_2.max()))
-threshold_2 = x_vals_2[sign_changes_2][0]
 plt.axvline(x_vals_2[sign_changes_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
 plt.legend()
 plt.show()
-
-# средние и дисперсии проекций
-projClass1_M = np.mean(projClass1)
-projClass2_M = np.mean(projClass2)
-projClass1_M_2 = np.mean(projClass1_2)
-projClass2_M_2 = np.mean(projClass2_2)
-projClass1_D = np.var(projClass1)
-projClass2_D = np.var(projClass2)
-projClass1_D_2 = np.var(projClass1_2)
-projClass2_D_2 = np.var(projClass2_2)
 
 # построение ROC-кривой
 all_data_2 = np.delete(all_data, 0, axis=1)
@@ -330,8 +320,8 @@ fpr = []
 
 for T in thresholds:
     # Рассчитаем TPR и FPR для текущего порога
-    tpr_value = 1 - norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
-    fpr_value = 1 - norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
+    tpr_value = 1 - stats.norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
+    fpr_value = 1 - stats.norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
     
     tpr.append(tpr_value)
     fpr.append(fpr_value)
