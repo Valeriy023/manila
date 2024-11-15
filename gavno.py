@@ -2,13 +2,14 @@ import pandas as pd
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import scipy.stats as stats
+import sys
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.decomposition._pca import PCA
 from sklearn import metrics
 from mpl_toolkits.mplot3d import Axes3D
+from sklearn.metrics import roc_curve, auc
 
 # Путь к файлу Excel
 file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
@@ -139,7 +140,7 @@ def class_stack(classesData, key1:str, key2:str):
     stackedClasses = np.delete(stackedClasses, 0, axis=1)
     return stackedClasses
 
-# применение метода классификации по минимуму расстояния для 3 классов
+# применение метода классификации по минимуму расстояния для 3 классов - эти же классы use в ЛДФ
 stackedClasses = class_stack(data_norm, 'НР', 'ЖТ')
 stackedClasses_means = np.mean(stackedClasses, axis=0)
 shamefulClass = np.delete(data_norm['ФЖ'].to_numpy(), 0, axis=1)
@@ -165,7 +166,7 @@ ogib1 = stats.norm.pdf(x_vals,projClass1_M, projClass1_D)
 ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
 
 #находим точки пересечений, где разница меняет знак
-difference = ogib1 - ogib2 
+difference = ogib1 - ogib2
 sign_changes = np.where(np.diff(np.sign(difference)))[0]
 threshold = x_vals[sign_changes][0]
 
@@ -231,84 +232,59 @@ twos = np.ones(30) * 2     # Массив из 30 двоек
 threes = np.ones(30) * 3   # Массив из 30 троек
 metki1_train = np.concatenate((ones, twos, threes))
 
-def pizdato1(data, w, threshold, metki_train):
-    r1 = np.matmul(data, w) - threshold
+def calculate_metrics(data, w, threshold, labels):
+    # Вычисляем проекции
+    projections = np.matmul(data, w) - threshold
 
-    metki1 = []
-    for i in range(len(r1)):
-        if r1[i] > 0:
-            metki1.append(1)
-        else:
-            metki1.append(0)
-    metki1_test = np.array(metki1)
+    # Классификация
+    predicted_labels = (projections > 0).astype(int)
 
-    tp1 = 0
-    tn1 = 0
-    fp1 = 0
-    fn1 = 0
-    for i in range(len(metki1_test)):
-        if metki_train[i] == 1 or metki_train[i] == 2:
-            if metki1_test[i] == 1:
-                tp1 += 1
-            else:
-                fn1 += 1
-        else:
-            if metki1_test[i] == 1:
-                fp1 += 1
-            else:
-                tn1 += 1
-    se1 = tp1/(tp1+fn1)
-    sp1 = tn1/(tn1+fp1)
-    acc1 = (tn1+tp1)/(tn1+tp1+fn1+fp1)
-    return se1, sp1, acc1
+    # Преобразуем метки 1 и 2 в класс "1", а остальные в "0"
+    true_positive_labels = (labels == 1) | (labels == 2)
+    true_negative_labels = ~true_positive_labels
 
-se1 = []
-sp1 = []
-thresholds1 = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 100)
-for i in thresholds1:
-    se, sp, _ = pizdato1(all_data_2, w_min_dist, i, metki1_train)
-    se1.append(se)
-    sp1.append(sp*(-1) + 1)
+    tp = np.sum(predicted_labels[true_positive_labels] == 1)
+    fn = np.sum(predicted_labels[true_positive_labels] == 0)
+    tn = np.sum(predicted_labels[true_negative_labels] == 0)
+    fp = np.sum(predicted_labels[true_negative_labels] == 1)
 
-plt.figure()
-plt.plot(sp1, se1)
-'''
-r2 = np.matmul(stackedClasses, w_norm_min_dist_2) - threshold_2
+    # Защита от деления на 0
+    se = tp / (tp + fn) if (tp + fn) > 0 else 0  # Чувствительность
+    sp = tn / (tn + fp) if (tn + fp) > 0 else 0  # Специфичность
+    acc = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0  # Точность
 
-metki2_train = np.concatenate((ones, twos))
+    return se, sp, acc
 
-metki2 = []
-for i in range(len(r2)):
-    if r2[i] > 0:
-        metki2.append(1)
-    else:
-        metki2.append(2)
-metki2_test = np.array(metki2)
+# Генерация порогов для projClass1 и projClass2
+thresholds_proj1 = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+se_proj1, sp_proj1 = [], []
 
-tp2 = 0
-tn2 = 0
-fp2 = 0
-fn2 = 0
-for i in range(len(metki2_test)):
-    if metki2_train[i] == 2:
-        if metki2_test[i] == 2:
-            tp2 += 1
-        else:
-            fn2 += 1
-    else:
-        if metki2_test[i] == 1:
-            tn2 += 1
-        else:
-            fp2 += 1
-print(tp2, tn2, fp2, fn2)
-print(metki2_test)
+# Расчёт метрик для projClass1
+for threshold in thresholds_proj1:
+    se, sp, _ = calculate_metrics(all_data_2, w_norm_min_dist, threshold, metki1_train)
+    se_proj1.append(se)
+    sp_proj1.append(1 - sp)
 
+# Генерация порогов для projClass2
+thresholds_proj2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 1000)
+se_proj2, sp_proj2 = [], []
 
+# Расчёт метрик для projClass2
+for threshold in thresholds_proj2:
+    se, sp, _ = calculate_metrics(all_data_2[:60], w_norm_min_dist_2, threshold, metki1_train[:60])
+    se_proj2.append(se)
+    sp_proj2.append(1 - sp)
 
-se2 = tp2/(tp2+fn2)
-sp2 = tn2/(tn2+fp2)
-acc2 = (tn2+tp2)/(tn2+tp2+fn2+fp2)
-'''
+# Построение ROC-кривой для projClass1
+plt.figure(figsize=(10, 6))
+plt.plot(sp_proj1, se_proj1, label="ROC Curve for projClass1", color="blue")
+plt.xlabel("1 - Specificity (FPR)")
+plt.ylabel("Sensitivity (TPR)")
+plt.title("ROC-кривая для projClass1")
+plt.legend()
+plt.grid()
+#plt.show()
+
 # Параметры гауссовых распределений для двух классов
 mu1, sigma1 = projClass1_M, projClass1_D  # Класс 1
 mu0, sigma0 = projClass2_M, projClass2_D  # Класс 0
@@ -327,22 +303,356 @@ for T in thresholds:
     fpr.append(fpr_value)
 
 # Построение ROC-кривой
-plt.plot(fpr, tpr, label="ROC Curve")
+plt.plot(fpr, tpr, label="ROC Curve", color='green')
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
 plt.title("ROC-кривая методом Гаусса")
 plt.legend()
 plt.show()
 
-'''
-sns.histplot(projClass1, kde=True, bins=20, color='skyblue', edgecolor='black')
-sns.histplot(projClass2, kde=True, bins=20, color='purple', edgecolor='black')
-plt.xlabel('Значение')
-plt.ylabel('Частота')
-plt.title('Гистограмма с оценкой плотности KDE')
-'''
+# Функция для расчёта SE, SP и ACC
+def calculate_metrics2(data, w, threshold, labels):
+    # Вычисляем проекции
+    projections = np.matmul(data, w) - threshold
 
+    # Классификация
+    predicted_labels = (projections > 0).astype(int)
+
+    # Преобразуем метки: 1 класс остаётся 1, 2 класс - 0
+    true_positive_labels = (labels == 1)
+    true_negative_labels = (labels == 2)
+
+
+    tp = np.sum(predicted_labels[true_positive_labels] == 1)
+    fn = np.sum(predicted_labels[true_positive_labels] == 0)
+    tn = np.sum(predicted_labels[true_negative_labels] == 0)
+    fp = np.sum(predicted_labels[true_negative_labels] == 1)
+
+    # Защита от деления на 0
+    se = tp / (tp + fn) if (tp + fn) > 0 else 0  # Чувствительность
+    sp = tn / (tn + fp) if (tn + fp) > 0 else 0  # Специфичность
+
+    return se, sp
+
+# Генерация порогов
+thresholds_proj2_2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 10000)
+se_proj2_2, sp_proj2_2 = [], []
+
+# Расчёт метрик для projClass1_2 и projClass2_2
+for threshold in thresholds_proj2_2:
+    se, sp = calculate_metrics2(np.vstack((class1, class2)), w_norm_min_dist_2, threshold, np.hstack((np.ones(len(class1)), np.ones(len(class2)) * 2)))
+    se_proj2_2.append(se)
+    sp_proj2_2.append(1 - sp)
+
+# Построение ROC-кривой
+plt.figure(figsize=(10, 6))
+plt.plot(sp_proj2_2, se_proj2_2, label="ROC Curve for projClass1_2 and projClass2_2", color="blue")
+plt.xlabel("1 - Specificity (FPR)")
+plt.ylabel("Sensitivity (TPR)")
+plt.title("ROC-кривая для projClass1_2 и projClass2_2")
+plt.legend()
+plt.grid()
+#plt.show()
+
+# Параметры гауссовых распределений для двух классов
+mu1, sigma1 = projClass1_M_2, projClass1_D_2  # Класс 1
+mu0, sigma0 = projClass2_M_2, projClass2_D_2  # Класс 0
+
+# Пороги для классификации
+thresholds = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 10000)
+tpr = []
+fpr = []
+
+for T in thresholds:
+    # Рассчитаем TPR и FPR для текущего порога
+    tpr_value = 1 - stats.norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
+    fpr_value = 1 - stats.norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
+    
+    tpr.append(tpr_value)
+    fpr.append(fpr_value)
+
+# Построение ROC-кривой
+plt.plot(fpr, tpr, label="ROC Curve", color='green')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC-кривая методом Гаусса")
+plt.legend()
+plt.show()
+
+
+#####################AAAAAAAAAAAAAAAAAAAAAAAAAAAAA НЕ ТРОГАТЬ, УБЬЕТ - пытались проверить с помощью функции
+# Вычисление ROC-кривой
+'''
+CHECK_TRUE = np.array([0]*30 + [1]*30)
+CHECK_NO_TRUE
+
+fpr, tpr, thresholds = roc_curve(CHECK_TRUE, CHECK_NO_TRUE)
+
+# Вычисление площади под кривой (AUC)
+roc_auc = auc(fpr, tpr)
+
+# Построение ROC-кривой
+plt.figure()
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')  # Линия случайной модели
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC)')
+plt.legend(loc='lower right')
+plt.show()
+'''
+#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA НЕ ТРОГАТЬ, УБЬЕТ
+
+
+###########################################################################################################
 #ЛДФ- Фишер, сначала посмотрели МГК, выделили "позорный класс"
+
+sum_covariance = np.cov(stackedClasses, rowvar=0) + np.cov(shamefulClass, rowvar=0)
+#
+
+w_ldf = np.matmul(np.linalg.inv(sum_covariance), (stackedClasses_means - shamefulClass_mean)) #
+w_norm_ldf = w_ldf/np.linalg.norm(w_ldf)
+
+del projClass1
+del projClass2
+
+projClass1 = np.matmul(stackedClasses, w_norm_ldf)
+projClass2 = np.matmul(shamefulClass, w_norm_ldf)
+
+# Определяем диапазон значений для оси X
+x_vals = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+
+# средние и дисперсии проекций
+projClass1_M = np.mean(projClass1)
+projClass2_M = np.mean(projClass2)
+projClass1_D = np.sqrt(np.var(projClass1))
+projClass2_D = np.sqrt(np.var(projClass2))
+
+#генерируем нормальное распределение по средним и дисперсиям
+ogib1 = stats.norm.pdf(x_vals,projClass1_M, projClass1_D)
+ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
+
+#находим точки пересечений, где разница меняет знак
+difference = ogib1 - ogib2
+sign_changes = np.where(np.diff(np.sign(difference)))[0]
+threshold = x_vals[sign_changes][0]
+
+# Отображаем гистограммы, огибающие и точки пересечения
+plt.figure()
+plt.hist(projClass1, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1+2')
+plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='3')
+plt.plot(x_vals, ogib1, color='red', linewidth=2, label="Огибающая 1+2")
+plt.plot(x_vals, ogib2, color='blue', linewidth=2, label="Огибающая 3")
+plt.xlim(left=min(projClass1.min(), projClass2.min()), right=max(projClass1.max(), projClass2.max()))
+plt.axvline(x_vals[sign_changes], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
+plt.xlabel('Значение')
+plt.ylabel('Плотность')
+plt.title('Гистограммы с пересечением огибающих')
+plt.legend()
+plt.show()
+
+# применение метода классификации по минимуму расстояния для 2 классов
+class1 = np.delete(data_norm['НР'].to_numpy(), 0, axis=1)
+class2 = np.delete(data_norm['ЖТ'].to_numpy(), 0, axis=1)
+class1_mean = np.mean(class1, axis=0)
+class2_mean = np.mean(class2, axis=0)
+
+sum_covariance_2 = np.cov(class1, rowvar=0) + np.cov(class2, rowvar=0)
+#
+w_ldf_2 = np.matmul(np.linalg.inv(sum_covariance_2), (class1_mean - class2_mean)) #
+w_norm_ldf_2 = w_ldf_2/np.linalg.norm(w_ldf_2)
+
+projClass1_2 = np.matmul(class1, w_norm_ldf_2)
+projClass2_2 = np.matmul(class2, w_norm_ldf_2)
+
+x_vals_2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 1000)
+
+projClass1_M_2 = np.mean(projClass1_2)
+projClass2_M_2 = np.mean(projClass2_2)
+projClass1_D_2 = np.sqrt(np.var(projClass1_2))
+projClass2_D_2 = np.sqrt(np.var(projClass2_2))
+
+ogib1_2 = stats.norm.pdf(x_vals_2,projClass1_M_2, projClass1_D_2)
+ogib2_2 = stats.norm.pdf(x_vals_2, projClass2_M_2, projClass2_D_2)
+
+difference_2 = ogib1_2 - ogib2_2
+sign_changes_2 = np.where(np.diff(np.sign(difference_2)))[0]
+threshold_2 = x_vals_2[sign_changes_2][0]
+
+# Отображаем гистограммы, огибающие и точки пересечения
+plt.figure()
+plt.hist(projClass1_2, bins=20, density=True, color='blue', edgecolor='black', alpha=0.5, label='1')
+plt.hist(projClass2_2, bins=20, density=True, color='orange', edgecolor='black', alpha=0.5, label='2') 
+plt.plot(x_vals_2, ogib1_2, color='red', linewidth=2, label="Огибающая 1")
+plt.plot(x_vals_2, ogib2_2, color='blue', linewidth=2, label="Огибающая 2")
+plt.xlim(left=min(projClass1_2.min(), projClass2_2.min()), right=max(projClass1_2.max(), projClass2_2.max()))
+plt.axvline(x_vals_2[sign_changes_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
+plt.xlabel('Значение')
+plt.ylabel('Плотность')
+plt.title('Гистограммы с пересечением огибающих')
+plt.legend()
+plt.show()
+
+# построение ROC-кривой
+all_data_2 = np.delete(all_data, 0, axis=1)
+r1 = np.matmul(all_data_2, w_norm_ldf) - threshold
+
+ones = np.ones(30) * 1    # Массив из 30 единиц
+twos = np.ones(30) * 2     # Массив из 30 двоек
+threes = np.ones(30) * 3   # Массив из 30 троек
+metki1_train = np.concatenate((ones, twos, threes))
+
+def calculate_metrics(data, w, threshold, labels):
+    # Вычисляем проекции
+    projections = np.matmul(data, w) - threshold
+
+    # Классификация
+    predicted_labels = (projections > 0).astype(int)
+
+    # Преобразуем метки 1 и 2 в класс "1", а остальные в "0"
+    true_positive_labels = (labels == 1) | (labels == 2)
+    true_negative_labels = ~true_positive_labels
+
+    tp = np.sum(predicted_labels[true_positive_labels] == 1)
+    fn = np.sum(predicted_labels[true_positive_labels] == 0)
+    tn = np.sum(predicted_labels[true_negative_labels] == 0)
+    fp = np.sum(predicted_labels[true_negative_labels] == 1)
+
+    # Защита от деления на 0
+    se = tp / (tp + fn) if (tp + fn) > 0 else 0  # Чувствительность
+    sp = tn / (tn + fp) if (tn + fp) > 0 else 0  # Специфичность
+    acc = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0  # Точность
+
+    return se, sp, acc
+
+# Генерация порогов для projClass1 и projClass2
+thresholds_proj1 = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+se_proj1, sp_proj1 = [], []
+
+# Расчёт метрик для projClass1
+for threshold in thresholds_proj1:
+    se, sp, _ = calculate_metrics(all_data_2, w_norm_ldf, threshold, metki1_train)
+    se_proj1.append(se)
+    sp_proj1.append(1 - sp)
+
+# Генерация порогов для projClass2
+thresholds_proj2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 1000)
+se_proj2, sp_proj2 = [], []
+
+# Расчёт метрик для projClass2
+for threshold in thresholds_proj2:
+    se, sp, _ = calculate_metrics(all_data_2[:60], w_norm_ldf_2, threshold, metki1_train[:60])
+    se_proj2.append(se)
+    sp_proj2.append(1 - sp)
+
+# Построение ROC-кривой для projClass1
+plt.figure(figsize=(10, 6))
+plt.plot(sp_proj1, se_proj1, label="ROC Curve for projClass1", color="blue")
+plt.xlabel("1 - Specificity (FPR)")
+plt.ylabel("Sensitivity (TPR)")
+plt.title("ROC-кривая для projClass1")
+plt.legend()
+plt.grid()
+#plt.show()
+
+# Параметры гауссовых распределений для двух классов
+mu1, sigma1 = projClass1_M, projClass1_D  # Класс 1
+mu0, sigma0 = projClass2_M, projClass2_D  # Класс 0
+
+# Пороги для классификации
+thresholds = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+tpr = []
+fpr = []
+
+for T in thresholds:
+    # Рассчитаем TPR и FPR для текущего порога
+    tpr_value = 1 - stats.norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
+    fpr_value = 1 - stats.norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
+    
+    tpr.append(tpr_value)
+    fpr.append(fpr_value)
+
+# Построение ROC-кривой
+plt.plot(fpr, tpr, label="ROC Curve", color='green')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC-кривая методом Гаусса")
+plt.legend()
+plt.show()
+
+# Функция для расчёта SE, SP и ACC
+def calculate_metrics2(data, w, threshold, labels):
+    # Вычисляем проекции
+    projections = np.matmul(data, w) - threshold
+
+    # Классификация
+    predicted_labels = (projections > 0).astype(int)
+
+    # Преобразуем метки: 1 класс остаётся 1, 2 класс - 0
+    true_positive_labels = (labels == 1)
+    true_negative_labels = (labels == 2)
+
+    tp = np.sum(predicted_labels[true_positive_labels] == 1)
+    fn = np.sum(predicted_labels[true_positive_labels] == 0)
+    tn = np.sum(predicted_labels[true_negative_labels] == 0)
+    fp = np.sum(predicted_labels[true_negative_labels] == 1)
+
+    # Защита от деления на 0
+    se = tp / (tp + fn) if (tp + fn) > 0 else 0  # Чувствительность
+    sp = tn / (tn + fp) if (tn + fp) > 0 else 0  # Специфичность
+
+    return se, sp
+
+# Генерация порогов
+thresholds_proj2_2 = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 10000)
+se_proj2_2, sp_proj2_2 = [], []
+
+# Расчёт метрик для projClass1_2 и projClass2_2
+for threshold in thresholds_proj2_2:
+    se, sp = calculate_metrics2(np.vstack((class1, class2)), w_norm_ldf_2, threshold, np.hstack((np.ones(len(class1)), np.ones(len(class2)) * 2)))
+    se_proj2_2.append(se)
+    sp_proj2_2.append(1 - sp)
+
+# Построение ROC-кривой
+plt.figure(figsize=(10, 6))
+plt.plot(sp_proj2_2, se_proj2_2, label="ROC Curve for projClass1_2 and projClass2_2", color="blue")
+plt.xlabel("1 - Specificity (FPR)")
+plt.ylabel("Sensitivity (TPR)")
+plt.title("ROC-кривая для projClass1_2 и projClass2_2")
+plt.legend()
+plt.grid()
+#plt.show()
+
+# Параметры гауссовых распределений для двух классов
+mu1, sigma1 = projClass1_M_2, projClass1_D_2  # Класс 1
+mu0, sigma0 = projClass2_M_2, projClass2_D_2  # Класс 0
+
+# Пороги для классификации
+thresholds = np.linspace(min(projClass1_2.min(), projClass2_2.min()), max(projClass1_2.max(), projClass2_2.max()), 10000)
+tpr = []
+fpr = []
+
+for T in thresholds:
+    # Рассчитаем TPR и FPR для текущего порога
+    tpr_value = 1 - stats.norm.cdf(T, mu1, sigma1)  # Интеграл для класса 1
+    fpr_value = 1 - stats.norm.cdf(T, mu0, sigma0)  # Интеграл для класса 0
+    
+    tpr.append(tpr_value)
+    fpr.append(fpr_value)
+
+# Построение ROC-кривой
+plt.plot(fpr, tpr, label="ROC Curve", color='green')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC-кривая методом Гаусса")
+plt.legend()
+plt.show()
+#################################################################################################################
+
+
+
 
 # САМОДЕЯТЕЛЬНОСТЬ МАШИ КОНЕЦ
 '''
