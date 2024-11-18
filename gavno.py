@@ -10,6 +10,8 @@ from sklearn.decomposition._pca import PCA
 from sklearn import metrics
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.metrics import roc_curve, auc
+from statsmodels.multivariate.manova import MANOVA
+import seaborn as sns
 
 # Путь к файлу Excel
 file_path = 'C:/manila/15 Гц, шаг 1.4, 3 выборка_ПРИМЕР.xlsx'
@@ -54,7 +56,9 @@ X_test = np.delete(X_test, 0, axis=1)
 
 all_data = np.vstack((data_norm['НР'], data_norm['ЖТ'], data_norm['ФЖ']))
 
-#к ближайших соседей
+'''
+k ближайших соседей
+'''
 model = KNeighborsClassifier(n_neighbors=15, metric='euclidean')
 model.fit(X_train, Y_train)
 predictions = model.predict(X_test)
@@ -70,12 +74,9 @@ predictions2 = model2.predict(X_test)
 #print(classification_report(Y_test, predictions2))
 #print(confusion_matrix(Y_test, predictions2))
 
-
-#МГК чтобы посмотреть на разделяемость классов 
-# Валера прости я все удалила, потому что начала путаться =(
-# скаты нарисовала после оценки % дисп, да и вроде получилось поменьше кода
-
-# САМОДЕЯТЕЛЬНОСТЬ МАШИ СТАРТ
+'''
+МГК чтобы посмотреть на разделяемость классов
+'''
 # PCA для % объяснённой дисп
 PCA_var = PCA(n_components=data_size2)  # число компонент = число признаков
 PCA_var.fit(all_data)  # применение PCA к данным
@@ -131,12 +132,14 @@ plt.title('Объекты в пространстве первых трёх гл
 ax.legend()
 plt.show()
 
-#метод наименьших расстояний
+'''
+метод наименьших расстояний
+'''
 # функция для объединения близких классов
 def class_stack(classesData, key1:str, key2:str):
     class1 = classesData[key1].to_numpy()
     class2 = classesData[key2].to_numpy()
-    stackedClasses = np.vstack((class1, class2)) #class1._append(class2, ignore_index = True)
+    stackedClasses = np.vstack((class1, class2))
     stackedClasses = np.delete(stackedClasses, 0, axis=1)
     return stackedClasses
 
@@ -167,8 +170,8 @@ ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
 
 #находим точки пересечений, где разница меняет знак
 difference = ogib1 - ogib2
-sign_changes = np.where(np.diff(np.sign(difference)))[0]
-threshold = x_vals[sign_changes][0]
+sign_change_idx = np.where(np.diff(np.sign(difference)))[0]
+threshold = x_vals[sign_change_idx][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
@@ -177,7 +180,7 @@ plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', a
 plt.plot(x_vals, ogib1, color='red', linewidth=2, label="Огибающая 1+2")
 plt.plot(x_vals, ogib2, color='blue', linewidth=2, label="Огибающая 3")
 plt.xlim(left=min(projClass1.min(), projClass2.min()), right=max(projClass1.max(), projClass2.max()))
-plt.axvline(x_vals[sign_changes], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
+plt.axvline(x_vals[sign_change_idx], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
@@ -206,8 +209,8 @@ ogib1_2 = stats.norm.pdf(x_vals_2,projClass1_M_2, projClass1_D_2)
 ogib2_2 = stats.norm.pdf(x_vals_2, projClass2_M_2, projClass2_D_2)
 
 difference_2 = ogib1_2 - ogib2_2
-sign_changes_2 = np.where(np.diff(np.sign(difference_2)))[0]
-threshold_2 = x_vals_2[sign_changes_2][0]
+sign_change_idx_2 = np.where(np.diff(np.sign(difference_2)))[0]
+threshold_2 = x_vals_2[sign_change_idx_2][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
@@ -216,7 +219,7 @@ plt.hist(projClass2_2, bins=20, density=True, color='orange', edgecolor='black',
 plt.plot(x_vals_2, ogib1_2, color='red', linewidth=2, label="Огибающая 1")
 plt.plot(x_vals_2, ogib2_2, color='blue', linewidth=2, label="Огибающая 2")
 plt.xlim(left=min(projClass1_2.min(), projClass2_2.min()), right=max(projClass1_2.max(), projClass2_2.max()))
-plt.axvline(x_vals_2[sign_changes_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
+plt.axvline(x_vals_2[sign_change_idx_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
@@ -253,7 +256,7 @@ def calculate_metrics(data, w, threshold, labels):
     sp = tn / (tn + fp) if (tn + fp) > 0 else 0  # Специфичность
     acc = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0  # Точность
 
-    return se, sp, acc
+    return se, sp
 
 # Генерация порогов для projClass1 и projClass2
 thresholds_proj1 = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
@@ -261,7 +264,7 @@ se_proj1, sp_proj1 = [], []
 
 # Расчёт метрик для projClass1
 for threshold in thresholds_proj1:
-    se, sp, _ = calculate_metrics(all_data_2, w_norm_min_dist, threshold, metki1_train)
+    se, sp = calculate_metrics(all_data_2, w_norm_min_dist, threshold, metki1_train)
     se_proj1.append(se)
     sp_proj1.append(1 - sp)
 
@@ -271,7 +274,7 @@ se_proj2, sp_proj2 = [], []
 
 # Расчёт метрик для projClass2
 for threshold in thresholds_proj2:
-    se, sp, _ = calculate_metrics(all_data_2[:60], w_norm_min_dist_2, threshold, metki1_train[:60])
+    se, sp = calculate_metrics(all_data_2[:60], w_norm_min_dist_2, threshold, metki1_train[:60])
     se_proj2.append(se)
     sp_proj2.append(1 - sp)
 
@@ -379,21 +382,17 @@ plt.title("ROC-кривая методом Гаусса")
 plt.legend()
 plt.show()
 
-
 #####################AAAAAAAAAAAAAAAAAAAAAAAAAAAAA НЕ ТРОГАТЬ, УБЬЕТ - пытались проверить с помощью функции
 # Вычисление ROC-кривой
 '''
-CHECK_TRUE = np.array([0]*30 + [1]*30)
-CHECK_NO_TRUE
-
-fpr, tpr, thresholds = roc_curve(CHECK_TRUE, CHECK_NO_TRUE)
-
+yTest = np.array([0]*30 + [1]*30)
+#fpr, tpr, thresholds = roc_curve(yTest, predicted_labels)
 # Вычисление площади под кривой (AUC)
-roc_auc = auc(fpr, tpr)
+#roc_auc = auc(fpr, tpr)
 
 # Построение ROC-кривой
 plt.figure()
-plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+plt.plot(fpr, tpr, color='darkorange', lw=2) #label=f'ROC curve (area = {roc_auc:.2f})')
 plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')  # Линия случайной модели
 plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
@@ -402,21 +401,19 @@ plt.ylabel('True Positive Rate')
 plt.title('Receiver Operating Characteristic (ROC)')
 plt.legend(loc='lower right')
 plt.show()
-'''
+
 #AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA НЕ ТРОГАТЬ, УБЬЕТ
+'''
+#########################################################################################################
 
-
-###########################################################################################################
-#ЛДФ- Фишер, сначала посмотрели МГК, выделили "позорный класс"
+'''
+ЛДФ - Фишер, сначала посмотрели МГК, выделили "позорный класс"
+'''
 
 sum_covariance = np.cov(stackedClasses, rowvar=0) + np.cov(shamefulClass, rowvar=0)
-#
 
-w_ldf = np.matmul(np.linalg.inv(sum_covariance), (stackedClasses_means - shamefulClass_mean)) #
+w_ldf = np.matmul(np.linalg.inv(sum_covariance), (stackedClasses_means - shamefulClass_mean))
 w_norm_ldf = w_ldf/np.linalg.norm(w_ldf)
-
-del projClass1
-del projClass2
 
 projClass1 = np.matmul(stackedClasses, w_norm_ldf)
 projClass2 = np.matmul(shamefulClass, w_norm_ldf)
@@ -436,8 +433,8 @@ ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
 
 #находим точки пересечений, где разница меняет знак
 difference = ogib1 - ogib2
-sign_changes = np.where(np.diff(np.sign(difference)))[0]
-threshold = x_vals[sign_changes][0]
+sign_change_idx = np.where(np.diff(np.sign(difference)))[0]
+threshold = x_vals[sign_change_idx][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
@@ -446,7 +443,7 @@ plt.hist(projClass2, bins=20, density=True, color='orange', edgecolor='black', a
 plt.plot(x_vals, ogib1, color='red', linewidth=2, label="Огибающая 1+2")
 plt.plot(x_vals, ogib2, color='blue', linewidth=2, label="Огибающая 3")
 plt.xlim(left=min(projClass1.min(), projClass2.min()), right=max(projClass1.max(), projClass2.max()))
-plt.axvline(x_vals[sign_changes], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
+plt.axvline(x_vals[sign_change_idx], label=f'Порог: x= {threshold:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
@@ -478,8 +475,8 @@ ogib1_2 = stats.norm.pdf(x_vals_2,projClass1_M_2, projClass1_D_2)
 ogib2_2 = stats.norm.pdf(x_vals_2, projClass2_M_2, projClass2_D_2)
 
 difference_2 = ogib1_2 - ogib2_2
-sign_changes_2 = np.where(np.diff(np.sign(difference_2)))[0]
-threshold_2 = x_vals_2[sign_changes_2][0]
+sign_change_idx_2 = np.where(np.diff(np.sign(difference_2)))[0]
+threshold_2 = x_vals_2[sign_change_idx_2][0]
 
 # Отображаем гистограммы, огибающие и точки пересечения
 plt.figure()
@@ -488,7 +485,7 @@ plt.hist(projClass2_2, bins=20, density=True, color='orange', edgecolor='black',
 plt.plot(x_vals_2, ogib1_2, color='red', linewidth=2, label="Огибающая 1")
 plt.plot(x_vals_2, ogib2_2, color='blue', linewidth=2, label="Огибающая 2")
 plt.xlim(left=min(projClass1_2.min(), projClass2_2.min()), right=max(projClass1_2.max(), projClass2_2.max()))
-plt.axvline(x_vals_2[sign_changes_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
+plt.axvline(x_vals_2[sign_change_idx_2], label=f'Порог: x= {threshold_2:.4f}')  # красные точки для пересечения
 plt.xlabel('Значение')
 plt.ylabel('Плотность')
 plt.title('Гистограммы с пересечением огибающих')
@@ -649,101 +646,122 @@ plt.ylabel("True Positive Rate")
 plt.title("ROC-кривая методом Гаусса")
 plt.legend()
 plt.show()
-#################################################################################################################
 
-
-
-
-# САМОДЕЯТЕЛЬНОСТЬ МАШИ КОНЕЦ
 '''
-fig, axs = plt.subplots(3, 1)
-
-diff_mean = np.mean(X_train[:15, :], axis=0) - np.mean(X_train[15:45, :], axis=0)
-sum_covariance = np.cov(X_train[:15, :], rowvar=0) + np.cov(X_train[15:45, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train[:15, :], w)
-proj_class2 = np.matmul(X_train[15:45, :], w)
-
-hist_data = np.vstack((proj_class1, proj_class2[0:15], proj_class2[15:]))
-axs[0].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['1', '2', '3'])
-axs[0].set_title('1 и 2+3')
-axs[0].legend(loc='best')
-
-diff_mean = np.mean(X_train[30:45, :], axis=0) - np.mean(X_train[:30, :], axis=0)
-sum_covariance = np.cov(X_train[30:45, :], rowvar=0) + np.cov(X_train[:30, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train[30:45, :], w)
-proj_class2 = np.matmul(X_train[:30, :], w)
-
-#np.reshape(proj_class2)
-
-hist_data = np.vstack((proj_class1, proj_class2[0:15], proj_class2[15:]))
-axs[1].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['3', '1', '2'])
-axs[1].set_title('1+2 и 3')
-axs[1].legend(loc='best')
-
-X_train13 = np.vstack((X_train[0:15, :], X_train[30:45, :]))
-
-diff_mean = np.mean(X_train13, axis=0) - np.mean(X_train[15:30, :], axis=0)
-sum_covariance = np.cov(X_train13, rowvar=0) + np.cov(X_train[15:30, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train13, w)
-proj_class2 = np.matmul(X_train[15:30, :], w)
-
-hist_data = np.vstack((proj_class1[:15], proj_class1[15:30], proj_class2))
-axs[2].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['1', '3', '2'])
-axs[2].set_title('1+3 и 2')
-axs[2].legend(loc='best')
-plt.show()
-
-fig, axs = plt.subplots(3, 1)
-
-diff_mean = np.mean(X_train[:15, :], axis=0) - np.mean(X_train[15:30, :], axis=0)
-sum_covariance = np.cov(X_train[:15, :], rowvar=0) + np.cov(X_train[15:30, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train[:15, :], w)
-proj_class2 = np.matmul(X_train[15:30, :], w)
-
-hist_data = np.vstack((proj_class1, proj_class2))
-axs[0].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['1', '2'])
-axs[0].set_title('1 и 2')
-axs[0].legend(loc='best')
-
-diff_mean = np.mean(X_train[15:30, :], axis=0) - np.mean(X_train[30:45, :], axis=0)
-sum_covariance = np.cov(X_train[15:30, :], rowvar=0) + np.cov(X_train[30:45, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train[15:30, :], w)
-proj_class2 = np.matmul(X_train[30:45, :], w)
-
-#np.reshape(proj_class2)
-
-hist_data = np.vstack((proj_class1, proj_class2))
-axs[1].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['2', '3'])
-axs[1].set_title('2 и 3')
-axs[1].legend(loc='best')
-
-diff_mean = np.mean(X_train[:15, :], axis=0) - np.mean(X_train[30:45, :], axis=0)
-sum_covariance = np.cov(X_train[:15, :], rowvar=0) + np.cov(X_train[30:45, :], rowvar=0)
-W = np.matmul(np.linalg.inv(sum_covariance), diff_mean)
-w = W/np.linalg.norm(W)
-proj_class1 = np.matmul(X_train[:15, :], w)
-proj_class2 = np.matmul(X_train[30:45, :], w)
-
-hist_data = np.vstack((proj_class1, proj_class2))
-axs[2].hist(hist_data.T, bins= 20, edgecolor = 'black', label=['1', '3'])
-axs[2].set_title('1 и 3')
-axs[2].legend(loc='best')
-plt.show()
-
-#порог ищите каждый сам!!!
-
-#МДА
-covNR = np.cov(X_train[:15, :], rowvar=0)
-covJT = np.cov(X_train[15:30, :], rowvar=0)
-covFJ = np.cov(X_train[30:45, :], rowvar=0)
+Критерий Фишера (множественный анализ)
 '''
+
+def gaussian(class1, class2, w):
+    projClass1 = np.matmul(class1, w)
+    projClass2 = np.matmul(class2, w)
+    x_vals = np.linspace(min(projClass1.min(), projClass2.min()), max(projClass1.max(), projClass2.max()), 1000)
+    ogib1 = stats.norm.pdf(x_vals,projClass1_M, projClass1_D)
+    ogib2 = stats.norm.pdf(x_vals, projClass2_M, projClass2_D)
+    difference = ogib1 - ogib2
+    sign_change_idx = np.where(np.diff(np.sign(difference)))[0]
+    threshold = x_vals[sign_change_idx][0]
+    return threshold, sign_change_idx
+
+#вызов функции get_perpendicular_line_in_point(threshold, sign_change_idx, x, -norm_vector[0]/norm_vector[1], -intercept/norm_vector[1])
+def get_perpendicular_line_in_point(pointX, y_idx, x, k, b):
+    y = k*x + b
+    a = 1/k
+    y_thr = y[y_idx]
+    k_p = -(1/a)
+    b_p = (1/a)*pointX + y_thr
+    y_1 = -(1/a)*(x_vals - pointX) + y_thr #уравнение перпендикулярной прямой
+    return y_1, k_p, b_p
+
+# Создаем метки классов
+labels = np.array([1]*30 + [2]*30 + [3]*30)  # 1 - НР, 2 - ЖТ, 3 - ФЖ
+
+# Разделяем данные на классы
+class_1 = all_data_2[:30]  # НР
+class_2 = all_data_2[30:60]  # ЖТ
+class_3 = all_data_2[60:]  # ФЖ
+
+# Средние значения для каждого класса
+mean_1 = np.mean(class_1, axis=0)
+mean_2 = np.mean(class_2, axis=0)
+mean_3 = np.mean(class_3, axis=0)
+
+# Общая средняя
+overall_mean = np.mean(all_data_2, axis=0)
+
+# Внутриклассовая ковариационная матрица
+Sw = np.zeros((all_data_2.shape[1], all_data_2.shape[1]))
+for c, mean in zip([class_1, class_2, class_3], [mean_1, mean_2, mean_3]):
+    Sw += np.cov(c, rowvar=False) * (c.shape[0] - 1)  # Ковариация внутри классов
+
+# Межклассовая ковариационная матрица
+Sb = np.zeros((all_data_2.shape[1], all_data_2.shape[1]))
+for mean in [mean_1, mean_2, mean_3]:
+    n_c = 30  # Количество объектов в каждом классе
+    mean_diff = (mean - overall_mean).reshape(-1, 1)
+    Sb += n_c * (mean_diff @ mean_diff.T)
+
+# Добавляем регуляризацию к Sw
+regularization_param = 1e-6  # Маленькая регуляризация для стабильности
+Sw += regularization_param * np.eye(Sw.shape[0])  # Добавляем λI
+
+# Собственные векторы и значения
+eigenvalues, eigenvectors = np.linalg.eig(np.linalg.inv(Sw) @ Sb)
+
+# Сортируем собственные векторы по убыванию собственных значений
+sorted_indices = np.argsort(eigenvalues)[::-1]
+eigenvalues = eigenvalues[sorted_indices]
+eigenvectors = eigenvectors[:, sorted_indices]
+
+# Выбираем два первых дискриминантных вектора
+w1 = eigenvectors[:, 0]
+w2 = eigenvectors[:, 1]
+
+# Проекция данных на дискриминантные оси
+proj_data = all_data_2 @ np.column_stack((w1, w2))
+
+# Вычисляем центры каждого класса в пространстве дискриминантных осей
+center_1 = np.mean(proj_data[:30], axis=0)  # Центр НР
+center_2 = np.mean(proj_data[30:60], axis=0)  # Центр ЖТ
+center_3 = np.mean(proj_data[60:], axis=0)  # Центр ФЖ
+
+# Функция для нахождения коэффициентов разделяющей прямой
+def separating_line(center_a, center_b):
+    # Вектор между центрами классов
+    delta = center_b - center_a
+    
+    # Средняя точка между центрами
+    midpoint = (center_a + center_b) / 2  
+    
+    # Нормальный вектор прямой (перпендикулярен линии между центрами)
+    normal_vector = np.array([-delta[1], delta[0]])
+    
+    # Уравнение прямой: normal_vector[0] * x + normal_vector[1] * y + intercept = 0
+    intercept = -np.dot(normal_vector, midpoint)
+    
+    return normal_vector, intercept
+
+# Прямые для каждой пары классов
+normal_12, intercept_12 = separating_line(center_1, center_2)
+normal_13, intercept_13 = separating_line(center_1, center_3)
+normal_23, intercept_23 = separating_line(center_2, center_3)
+
+# Функция для отображения прямой
+def plot_line(normal_vector, intercept, label, color):
+    x = np.linspace(-4, 4, 100)  # Диапазон для x
+    y = -(normal_vector[0] * x + intercept) / normal_vector[1]  # Уравнение прямой
+    plt.plot(x, y, label=label, color=color, linestyle='--')
+
+# Визуализация
+plt.figure(figsize=(8, 6))
+
+# Отображение данных
+plt.scatter(proj_data[:30, 0], proj_data[:30, 1], label='НР', alpha=0.7)
+plt.scatter(proj_data[30:60, 0], proj_data[30:60, 1], label='ЖТ', alpha=0.7)
+plt.scatter(proj_data[60:, 0], proj_data[60:, 1], label='ФЖ', alpha=0.7)
+
+plt.xlabel('1-я дискриминантная ось')
+plt.ylabel('2-я дискриминантная ось')
+plt.title('Распределение объектов и разделяющие прямые')
+plt.legend()
+plt.grid()
+plt.show()
